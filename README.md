@@ -9,14 +9,14 @@ Escape looks for lines that look like:
 	check := escape(&err)
 
 and expands these in-place so that the function returned by escape can be
-used to trigger and early return from the enclosing function.
+used to trigger an early return from the enclosing function.
 
 Only short variable declarations are currently expanded.
 
 ## Compilation
 
 The escape analysis output of the go compiler can be used to catch
-potential misuses of the function returned by escape:
+potential misuses of escape:
 
     go build -gcflags -m 2>&1 |
     grep 'func literal escapes to heap' |
