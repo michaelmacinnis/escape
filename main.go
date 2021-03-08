@@ -120,27 +120,36 @@ func find(d *decorator.Decorator, fset *token.FileSet, info *types.Info, l []dst
 	return
 }
 
+func generate(d *decorator.Decorator, fset *token.FileSet, label, param, typ string) []dst.Stmt {
+	text := fmt.Sprintf(inline, label, typ, param, label, typ)
+	g, err := parser.ParseFile(fset, "", text, parser.ParseComments)
+	if err != nil {
+		return nil
+	}
+
+	generated, err := d.DecorateFile(g)
+	if err != nil {
+		return nil
+	}
+
+	statements := generated.Decls[0].(*dst.FuncDecl).Body.List[:2]
+
+	statements[0] = dst.Clone(statements[0]).(dst.Stmt)
+	statements[1] = dst.Clone(statements[1]).(dst.Stmt)
+
+	return statements
+}
+
 func replace(d *decorator.Decorator, fset *token.FileSet, file *dst.File, info *types.Info, list []dst.Stmt) []dst.Stmt {
 	i, label, param, typ := find(d, fset, info, list)
 	if i == -1 {
 		return list
 	}
 
-	text := fmt.Sprintf(inline, label, typ, param, label, typ)
-	g, err := parser.ParseFile(fset, "", text, parser.ParseComments)
-	if err != nil {
+	adding := generate(d, fset, label, param, typ)
+	if adding == nil {
 		return list
 	}
-
-	generated, err := d.DecorateFile(g)
-	if err != nil {
-		return list
-	}
-
-	adding := generated.Decls[0].(*dst.FuncDecl).Body.List[:2]
-
-	adding[0] = dst.Clone(adding[0]).(dst.Stmt)
-	adding[1] = dst.Clone(adding[1]).(dst.Stmt)
 
 	l := make([]dst.Stmt, 0, len(list)+2)
 
