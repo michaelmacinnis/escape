@@ -10,6 +10,9 @@ import (
 	"go/token"
 	"go/types"
 	"os"
+
+	"github.com/dave/dst"
+	"github.com/dave/dst/decorator"
 )
 
 var inline = `package generated
@@ -50,11 +53,11 @@ func unused() {
 }
 `
 
-func find(fset *token.FileSet, info *types.Info, l []ast.Stmt) (index int, label, param, typ string) {
+func find(d *decorator.Decorator, fset *token.FileSet, info *types.Info, l []dst.Stmt) (index int, label, param, typ string) {
 	index = -1
 
 	for i, s := range l {
-		assign, ok := s.(*ast.AssignStmt)
+		assign, ok := s.(*dst.AssignStmt)
 		if !ok {
 			continue
 		}
@@ -63,12 +66,12 @@ func find(fset *token.FileSet, info *types.Info, l []ast.Stmt) (index int, label
 			continue
 		}
 
-		call, ok := assign.Rhs[0].(*ast.CallExpr)
+		call, ok := assign.Rhs[0].(*dst.CallExpr)
 		if !ok {
 			continue
 		}
 
-		ident, ok := call.Fun.(*ast.Ident)
+		ident, ok := call.Fun.(*dst.Ident)
 		if !ok {
 			continue
 		}
@@ -77,7 +80,7 @@ func find(fset *token.FileSet, info *types.Info, l []ast.Stmt) (index int, label
 			continue
 		}
 
-		ident, ok = assign.Lhs[0].(*ast.Ident)
+		ident, ok = assign.Lhs[0].(*dst.Ident)
 		if !ok {
 			continue
 		}
@@ -89,7 +92,9 @@ func find(fset *token.FileSet, info *types.Info, l []ast.Stmt) (index int, label
 			continue
 		}
 
-		t := info.Types[call.Args[0]].Type
+		ae := d.Map.Ast.Nodes[call.Args[0]].(ast.Expr)
+
+		t := info.Types[ae].Type
 
 		pt, ok := t.(*types.Pointer)
 		if !ok {
@@ -100,7 +105,7 @@ func find(fset *token.FileSet, info *types.Info, l []ast.Stmt) (index int, label
 		typ = pt.Elem().String()
 
 		buf := bytes.Buffer{}
-		err := format.Node(&buf, fset, call.Args[0])
+		err := format.Node(&buf, fset, ae)
 		if err != nil {
 			continue
 		}
@@ -115,39 +120,47 @@ func find(fset *token.FileSet, info *types.Info, l []ast.Stmt) (index int, label
 	return
 }
 
-func replace(fset *token.FileSet, file *ast.File, info *types.Info, list []ast.Stmt) []ast.Stmt {
-	i, label, param, typ := find(fset, info, list)
+func replace(d *decorator.Decorator, fset *token.FileSet, file *dst.File, info *types.Info, list []dst.Stmt) []dst.Stmt {
+	i, label, param, typ := find(d, fset, info, list)
 	if i == -1 {
 		return list
 	}
 
 	text := fmt.Sprintf(inline, label, typ, param, label, typ)
-	g, err := parser.ParseFile(fset, "generated", text, parser.ParseComments)
+	g, err := parser.ParseFile(fset, "", text, parser.ParseComments)
 	if err != nil {
 		return list
 	}
 
-	adding := g.Decls[0].(*ast.FuncDecl).Body.List[:2]
+	generated, err := d.DecorateFile(g)
+	if err != nil {
+		return list
+	}
 
-	l := make([]ast.Stmt, 0, len(list)+2)
+	adding := generated.Decls[0].(*dst.FuncDecl).Body.List[:2]
+
+	adding[0] = dst.Clone(adding[0]).(dst.Stmt)
+	adding[1] = dst.Clone(adding[1]).(dst.Stmt)
+
+	l := make([]dst.Stmt, 0, len(list)+2)
 
 	copy(l, list[:i])
 	l = append(l, adding...)
 
-	cmap := ast.NewCommentMap(fset, file, file.Comments)
-	for k, v := range ast.NewCommentMap(fset, g, g.Comments) {
-		cmap[k] = v
-	}
-
-	file.Comments = cmap.Comments()
-
-	return append(l, replace(fset, file, info, list[i+1:])...)
+	return append(l, replace(d, fset, file, info, list[i+1:])...)
 }
 
 func translate(name string) error {
 	fset := token.NewFileSet()
 
-	file, err := parser.ParseFile(fset, name, nil, parser.ParseComments)
+	f, err := parser.ParseFile(fset, name, nil, parser.ParseComments)
+	if err != nil {
+		return err //nolint:wrapcheck
+	}
+
+	d := decorator.NewDecorator(fset)
+
+	file, err := d.DecorateFile(f)
 	if err != nil {
 		return err //nolint:wrapcheck
 	}
@@ -162,7 +175,7 @@ func translate(name string) error {
 
 	info := &types.Info{Types: make(map[ast.Expr]types.TypeAndValue)}
 
-	conf.Check(name, fset, []*ast.File{file}, info)
+	conf.Check(name, fset, []*ast.File{f}, info)
 
 	if err != nil {
 		return err //nolint:wrapcheck
@@ -170,18 +183,18 @@ func translate(name string) error {
 
 	_ = info
 
-	ast.Inspect(file, func(n ast.Node) bool {
-		b, ok := n.(*ast.BlockStmt)
+	dst.Inspect(file, func(n dst.Node) bool {
+		b, ok := n.(*dst.BlockStmt)
 		if !ok {
 			return true
 		}
 
-		b.List = replace(fset, file, info, b.List)
+		b.List = replace(d, fset, file, info, b.List)
 
 		return true
 	})
 
-	err = format.Node(os.Stdout, fset, file)
+	err = decorator.Print(file)
 	if err != nil {
 		return err //nolint:wrapcheck
 	}
@@ -190,15 +203,12 @@ func translate(name string) error {
 }
 
 func main() {
-	/*
-		if len(os.Args) != 2 {
-			fmt.Fprintf(os.Stderr, "usage: %s FILE\n", os.Args[0])
-			return
-		}
+	if len(os.Args) != 2 {
+		fmt.Fprintf(os.Stderr, "usage: %s FILE\n", os.Args[0])
+		return
+	}
 
-		err := translate(os.Args[1])
-	*/
-	err := translate("../escape-example/example.ego")
+	err := translate(os.Args[1])
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s: %s\n", os.Args[0], err.Error())
 	}
