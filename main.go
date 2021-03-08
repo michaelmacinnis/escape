@@ -53,74 +53,7 @@ func unused() {
 }
 `
 
-func find(d *decorator.Decorator, fset *token.FileSet, info *types.Info, l []dst.Stmt) (index int, label, param, typ string) {
-	index = -1
-
-	for i, s := range l {
-		assign, ok := s.(*dst.AssignStmt)
-		if !ok {
-			continue
-		}
-
-		if len(assign.Lhs) > 1 {
-			continue
-		}
-
-		call, ok := assign.Rhs[0].(*dst.CallExpr)
-		if !ok {
-			continue
-		}
-
-		ident, ok := call.Fun.(*dst.Ident)
-		if !ok {
-			continue
-		}
-
-		if ident.Name != "escape" {
-			continue
-		}
-
-		ident, ok = assign.Lhs[0].(*dst.Ident)
-		if !ok {
-			continue
-		}
-
-		label = ident.Name
-
-		if len(call.Args) != 1 {
-			fmt.Fprintf(os.Stderr, "escape expects 1 argument, passed %d\n", len(call.Args))
-			continue
-		}
-
-		ae := d.Map.Ast.Nodes[call.Args[0]].(ast.Expr)
-
-		t := info.Types[ae].Type
-
-		pt, ok := t.(*types.Pointer)
-		if !ok {
-			fmt.Fprintf(os.Stderr, "escape expects pointer type, passed %s\n", t)
-			continue
-		}
-
-		typ = pt.Elem().String()
-
-		buf := bytes.Buffer{}
-		err := format.Node(&buf, fset, ae)
-		if err != nil {
-			continue
-		}
-
-		param = buf.String()
-
-		index = i
-
-		break
-	}
-
-	return
-}
-
-func generate(d *decorator.Decorator, fset *token.FileSet, label, param, typ string) []dst.Stmt {
+func code(d *decorator.Decorator, fset *token.FileSet, label, param, typ string) []dst.Stmt {
 	text := fmt.Sprintf(inline, label, typ, param, label, typ)
 	g, err := parser.ParseFile(fset, "", text, parser.ParseComments)
 	if err != nil {
@@ -140,23 +73,105 @@ func generate(d *decorator.Decorator, fset *token.FileSet, label, param, typ str
 	return statements
 }
 
-func replace(d *decorator.Decorator, fset *token.FileSet, file *dst.File, info *types.Info, list []dst.Stmt) []dst.Stmt {
-	i, label, param, typ := find(d, fset, info, list)
-	if i == -1 {
-		return list
+var count = 0
+
+func gensym() string {
+	count++
+	return fmt.Sprintf("escape_hatch_%d", count)
+}
+
+func find(d *decorator.Decorator, fset *token.FileSet, info *types.Info, e *dst.Expr) (label, param, typ string) {
+	call, ok := (*e).(*dst.CallExpr)
+	if !ok {
+		return
 	}
 
-	adding := generate(d, fset, label, param, typ)
-	if adding == nil {
-		return list
+	ident, ok := call.Fun.(*dst.Ident)
+	if !ok {
+		return
 	}
 
-	l := make([]dst.Stmt, 0, len(list)+2)
+	if ident.Name != "escape" {
+		for i := range call.Args {
+			label, param, typ = find(d, fset, info, &call.Args[i])
+			if label != "" {
+				return
+			}
+		}
 
-	copy(l, list[:i])
-	l = append(l, adding...)
+		return
+	}
 
-	return append(l, replace(d, fset, file, info, list[i+1:])...)
+	if len(call.Args) != 1 {
+		fmt.Fprintf(os.Stderr, "escape expects 1 argument, passed %d\n", len(call.Args))
+		return
+	}
+
+	ae := d.Map.Ast.Nodes[call.Args[0]].(ast.Expr)
+
+	t := info.Types[ae].Type
+
+	pt, ok := t.(*types.Pointer)
+	if !ok {
+		fmt.Fprintf(os.Stderr, "escape expects pointer type, passed %s\n", t)
+		return
+	}
+
+	typ = pt.Elem().String()
+
+	buf := bytes.Buffer{}
+	err := format.Node(&buf, fset, ae)
+	if err != nil {
+		return
+	}
+
+	param = buf.String()
+
+	label = gensym()
+
+	*e = dst.NewIdent(label)
+
+	return
+}
+
+func replace(d *decorator.Decorator, fset *token.FileSet, file *dst.File, info *types.Info, l []dst.Stmt) []dst.Stmt {
+	var head, tail []dst.Stmt
+
+	for i, s := range l {
+		assign, ok := s.(*dst.AssignStmt)
+		if !ok {
+			continue
+		}
+
+		if len(assign.Lhs) > 1 {
+			continue
+		}
+
+		label, param, typ := find(d, fset, info, &assign.Rhs[0])
+		if label == "" {
+			continue
+		}
+
+		head = l[:i]
+		tail = l[i:]
+
+		//	insert:
+		adding := code(d, fset, label, param, typ)
+		if adding == nil {
+			continue
+		}
+
+		list := make([]dst.Stmt, 0, len(l)+2)
+
+		copy(list, head)
+		list = append(list, adding[0], adding[1], tail[0])
+
+		l = append(list, replace(d, fset, file, info, tail[1:])...)
+
+		break
+	}
+
+	return l
 }
 
 func translate(name string) error {
