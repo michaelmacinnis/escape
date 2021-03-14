@@ -5,12 +5,12 @@
 	# Install the check and escape binaries used by generate.sh.
 	go install ./...
 
-	# (Optional) move escape-go to a directory in your PATH.
+	# (Optional) move expand-escape to a directory in your PATH.
 
 ## Running
 
 	# From the root directory of a package that uses escape() in .ego files.
-    escape-go && go build
+    expand-escape && go build
 
 ### Translation
 
