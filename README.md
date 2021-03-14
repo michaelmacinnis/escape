@@ -22,14 +22,15 @@ or,
 
 	check := f(escape(&err))
 
-and expands these in-place so that the function returned by escape can be
-used to trigger an early return from the function that called escape.
+in .ego files, and expands these in-place (writing the result to a .go file)
+so that the function returned by escape can be used to trigger an early return
+from the function that called escape.
 
 Only short variable declarations and escape() used as an argument are
 currently expanded.
 
 ### Restrictions
 
-The function returned by escape can only be called by a function with a
-call chain rooted at the function that called escape. When other uses are
-detected they are reported as errors.
+The function returned by escape can only be called by a function with a call
+chain rooted at the function that called escape. When other uses are detected
+they are reported as errors.
