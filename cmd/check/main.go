@@ -26,19 +26,6 @@ import (
 	"golang.org/x/tools/go/ssa/ssautil"
 )
 
-// flags
-var (
-	algoFlag = flag.String("algo", "pta",
-		`Call graph construction algorithm (static, cha, rta, pta)`)
-
-	testFlag = flag.Bool("test", false,
-		"Loads test code (*_test.go) for imported packages")
-)
-
-func init() {
-	flag.Var((*buildutil.TagsFlag)(&build.Default.BuildTags), "tags", buildutil.TagsFlagDoc)
-}
-
 const Usage = `check: report invalid uses of escape().
 
 Usage:
@@ -65,15 +52,15 @@ Flags:
 -test      Include the package's tests in the analysis.
 `
 
-func main() {
-	flag.Parse()
-	if err := doCallgraph("", "", *algoFlag, *testFlag, flag.Args()); err != nil {
-		fmt.Fprintf(os.Stderr, "callgraph: %s\n", err)
-		os.Exit(1)
-	}
-}
+var (
+	algoFlag = flag.String("algo", "pta",
+		`Call graph construction algorithm (static, cha, rta, pta)`)
 
-func doCallgraph(dir, gopath, algo string, tests bool, args []string) error {
+	testFlag = flag.Bool("test", false,
+		"Loads test code (*_test.go) for imported packages")
+)
+
+func do(dir, gopath, algo string, tests bool, args []string) error {
 	if len(args) == 0 {
 		fmt.Fprintln(os.Stderr, Usage)
 		return nil
@@ -171,47 +158,42 @@ func doCallgraph(dir, gopath, algo string, tests bool, args []string) error {
 	hatches := map[string]string{}
 
 	if err := callgraph.GraphVisitEdges(cg, func(edge *callgraph.Edge) error {
-		data := Edge{fset: prog.Fset}
+		caller := edge.Caller.Func
+		callerPosition := prog.Fset.Position(caller.Pos())
 
-		data.edge = edge
-		data.Caller = edge.Caller.Func
-		data.CallerPosition = prog.Fset.Position(data.Caller.Pos())
-		data.Callee = edge.Callee.Func
-		data.CalleePosition = prog.Fset.Position(data.Callee.Pos())
+		callee := edge.Callee.Func
+		calleePosition := prog.Fset.Position(callee.Pos())
 
-		parent := data.Caller.Parent()
+		var calleeParentPosition token.Position
+
+		parent := callee.Parent()
 		if parent != nil {
-			data.CallerParentPosition = prog.Fset.Position(parent.Pos())
-		}
-
-		parent = data.Callee.Parent()
-		if parent != nil {
-			data.CalleeParentPosition = prog.Fset.Position(parent.Pos())
+			calleeParentPosition = prog.Fset.Position(parent.Pos())
 		}
 
 		if _, ok := edge.Site.(*ssa.Go); !ok {
-		from, ok := callers[data.CalleePosition.String()]
-		if !ok {
-			from = map[string]struct{}{}
-			callers[data.CalleePosition.String()] = from
-		}
-		from[data.CallerPosition.String()] = struct{}{}
+			from, ok := callers[calleePosition.String()]
+			if !ok {
+				from = map[string]struct{}{}
+				callers[calleePosition.String()] = from
+			}
+			from[callerPosition.String()] = struct{}{}
 
-		var h *hatch
+			var h *hatch
 
-		pos := data.CalleePosition
-		for k := range watches {
-			if strings.HasSuffix(pos.Filename, k.base) && pos.Line == k.line {
-				h = &k
-				break
+			pos := calleePosition
+			for k := range watches {
+				if strings.HasSuffix(pos.Filename, k.base) && pos.Line == k.line {
+					h = &k
+					break
+				}
+			}
+
+			if h != nil {
+				hatches[pos.String()] = calleeParentPosition.String()
+				delete(watches, *h)
 			}
 		}
-
-		if h != nil {
-			hatches[pos.String()] = data.CalleeParentPosition.String()
-			delete(watches, *h)
-		}
-	}
 
 		return nil
 	}); err != nil {
@@ -229,21 +211,6 @@ func doCallgraph(dir, gopath, algo string, tests bool, args []string) error {
 	return nil
 }
 
-func valid(callers map[string]map[string]struct{}, parent string, from map[string]struct{}) bool {
-	for caller := range from {
-		if caller != parent {
-			if caller == "-" {
-				return false
-			}
-			from, ok := callers[caller]
-			if !ok || !valid(callers, parent, from) {
-				return false
-			}
-		}
-	}
-	return true
-}
-
 // mainPackages returns the main packages to analyze.
 // Each resulting package is named "main" and has a main function.
 func mainPackages(pkgs []*ssa.Package) ([]*ssa.Package, error) {
@@ -259,30 +226,29 @@ func mainPackages(pkgs []*ssa.Package) ([]*ssa.Package, error) {
 	return mains, nil
 }
 
-type Edge struct {
-	Caller *ssa.Function
-	CallerPosition token.Position
-
-	CallerParentPosition token.Position
-
-	Callee *ssa.Function
-	CalleePosition token.Position
-
-	CalleeParentPosition token.Position
-
-	edge     *callgraph.Edge
-	fset     *token.FileSet
-}
-
-func (e *Edge) Dynamic() string {
-	if e.edge.Site != nil {
-		if _, ok := e.edge.Site.(*ssa.Go); ok {
-			return "go"
-		} else if _, ok = e.edge.Site.(*ssa.Defer); ok {
-			return "defer"
-		} else if e.edge.Site.Common().StaticCallee() == nil {
-			return "dynamic"
+func valid(callers map[string]map[string]struct{}, parent string, from map[string]struct{}) bool {
+	for caller := range from {
+		if caller != parent {
+			if caller == "-" {
+				return false
+			}
+			from, ok := callers[caller]
+			if !ok || !valid(callers, parent, from) {
+				return false
+			}
 		}
 	}
-	return "static"
+	return true
+}
+
+func init() {
+	flag.Var((*buildutil.TagsFlag)(&build.Default.BuildTags), "tags", buildutil.TagsFlagDoc)
+}
+
+func main() {
+	flag.Parse()
+	if err := do("", "", *algoFlag, *testFlag, flag.Args()); err != nil {
+		fmt.Fprintf(os.Stderr, "callgraph: %s\n", err)
+		os.Exit(1)
+	}
 }

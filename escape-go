@@ -13,7 +13,7 @@ while read Path; do
 done)
 
 Pattern=$(echo "$Hatches" | cut -d: -f-2 | tr : ' ' |
-"$Check" -algo=pta -test . |
+"$Check" -test . |
 cut -d: -f-2 | tr '\n' '|' | sed 's/.$//')
 
 Errors=$(echo "$Hatches" | grep -E "$Pattern" |
