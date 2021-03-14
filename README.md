@@ -1,8 +1,8 @@
-# escape
+# Adding Escape Hatches to Go
 
-## Building
+## Installing
 
-	# Install the check and escape binaries used by generate.sh
+	# Install the check and escape binaries used by generate.sh.
 	go install ./...
 
 	# (Optional) move escape-go to a directory in your PATH.
@@ -10,30 +10,26 @@
 ## Running
 
 	# From the root directory of a package that uses escape() in .ego files.
+    escape-go
 
-    escape FILE.ego > FILE.go
+### Translation
 
-## Translation
+Escape looks for lines that look like,
 
-Escape looks for lines that look like:
+	abort := escape(&err)
 
-	check := escape(&err)
+or,
+
+	check := f(escape(&err))
 
 and expands these in-place so that the function returned by escape can be
-used to trigger an early return from the enclosing function.
+used to trigger an early return from the function that called escape.
 
-Only short variable declarations are currently expanded.
+Only short variable declarations and escape() used as an argument are
+currently expanded.
 
-## Compilation
+### Restrictions
 
-The escape analysis output of the go compiler can be used to catch
-potential misuses of escape:
-
-    go build -gcflags -m 2>&1 |
-    grep 'func literal escapes to heap' |
-    grep -Ff <(find . -name '*.go' |
-        xargs -n1 grep -EHn '\W+escapePanicFlag := false$' |
-        awk -F: '{ print $1":"$2+1 }') |
-    sed -e 's/func literal escapes to heap/possible misuse of escape/g'
-
-The line numbers reported refer to the generated code.
+The function returned by escape can only be called by a function with a
+call chain rooted at the function that called escape. When other uses are
+detected they are reported as errors.
