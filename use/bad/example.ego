@@ -1,0 +1,148 @@
+package main
+
+import (
+	"errors"
+	"fmt"
+)
+
+var errFailure = errors.New("failure")
+
+func failure() error {
+	return errFailure
+}
+
+func success() error {
+	return nil
+}
+
+func emptyFailure() (string, error) {
+	return "", errFailure
+}
+
+func stringSuccess() (string, error) {
+	return "hello", nil
+}
+
+func childCallsCheck(check func(error)) {
+	check(success())
+
+	check(failure())
+}
+
+func furtherComplicatedChain(found func(string)) {
+	found("response")
+}
+
+func someComplicatedChain(found func(string)) {
+	furtherComplicatedChain(found)
+}
+
+func nothingFancy() (err error) {
+	check := escape(&err)
+
+	check(success())
+
+	check(failure())
+
+	return
+}
+
+func nothingFancy2() (err error) {
+	check := escape(&err)
+
+	s, err := stringSuccess()
+	check(err)
+
+	println(s)
+
+	_, err = emptyFailure()
+	check(err)
+
+	return
+}
+
+func passToChild() (err error) {
+	check := escape(&err)
+
+	childCallsCheck(check)
+
+	return
+}
+
+func cannotPassToParent() (err error) {
+	check := func() func(error) {
+		childCheck := escape(&err)
+
+		return childCheck
+	}()
+
+	check(success())
+
+	return
+}
+
+func cannotPassToParent2() (err error) {
+	check := func() func(error) {
+		check := escape(&err)
+		return check
+	}()
+
+	check(success())
+
+	return
+}
+
+func cannotGiveCheckToAnotherGoroutine() (err error) {
+	check := escape(&err)
+
+	go childCallsCheck(check)
+
+	return
+}
+
+func notJustForErrors() (response string) {
+	found := escape(&response)
+
+	someComplicatedChain(found)
+
+	return "not found"
+}
+
+func additionalContext() (err error) {
+	check := escape(&err)
+	annotate := func(err error, format string, args ...interface{}) {
+		if err == nil {
+			return
+		}
+
+		check(fmt.Errorf(format+": %w", append(args, err)...))
+	}
+
+	annotate(failure(), "call to failure() failed")
+
+	return
+}
+
+func annotate(check func(error)) func(error, string, ...interface{}) {
+	return func(err error, format string, args ...interface{}) {
+		if err != nil {
+			check(fmt.Errorf(format+": %w", append(args, err)...))
+		}
+	}
+}
+
+func additionalContext2() (err error) {
+	check := annotate(escape(&err))
+
+	check(failure(), "call to failure() failed")
+
+	return
+}
+
+// Some comments that should stay put.
+func main() {
+	cannotGiveCheckToAnotherGoroutine()
+	passToChild()
+	cannotPassToParent2()
+	notJustForErrors()
+}
