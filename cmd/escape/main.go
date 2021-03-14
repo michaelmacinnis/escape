@@ -10,6 +10,7 @@ import (
 	"go/token"
 	"go/types"
 	"os"
+	"path/filepath"
 
 	"github.com/dave/dst"
 	"github.com/dave/dst/decorator"
@@ -40,7 +41,10 @@ func unused() {
 				r := recover()
 				if r != &panicking {
 					// It would be better if we could unrecover.
-					// Or not have to use panic/recover.
+					// Or if panicking with the return value from recover, unrecovered.
+					// Or if there was a mechanism specifically for this that did not
+					// use panic/recover but was weaker than panic in the same way that
+					// panic is weaker than runtime.Goexit.
 					panic(r)
 				}
 			}
@@ -106,6 +110,11 @@ func find(d *decorator.Decorator, fset *token.FileSet, info *types.Info, e *dst.
 	ae := d.Map.Ast.Nodes[call.Args[0]].(ast.Expr)
 
 	src = fset.Position(ae.Pos()).String()
+	if wd, err := os.Getwd(); err == nil {
+		if rel, err := filepath.Rel(wd, src); err == nil {
+			src = rel
+		}
+	}
 
 	t := info.Types[ae].Type
 
