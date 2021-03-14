@@ -1,5 +1,16 @@
 # escape
 
+## Building
+
+	# Install the check and escape binaries used by generate.sh
+	go install ./...
+
+	# (Optional) move escape-go to a directory in your PATH.
+
+## Running
+
+	# From the root directory of a package that uses escape() in .ego files.
+
     escape FILE.ego > FILE.go
 
 ## Translation
