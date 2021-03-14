@@ -22,9 +22,9 @@ or,
 
 	check := f(escape(&err))
 
-in .ego files, and expands these in-place (writing the result to a .go file)
-so that the function returned by escape can be used to trigger an early return
-from the function that called escape.
+in .ego files, and rewrites them (saving the result to a .go file) so that
+the function returned by escape can be used to trigger an early return from
+the function that called escape.
 
 Only short variable declarations and escape() used as an argument are
 currently expanded.
