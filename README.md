@@ -10,7 +10,7 @@
 ## Running
 
 	# From the root directory of a package that uses escape() in .ego files.
-    escape-go
+    escape-go && go build
 
 ### Translation
 
