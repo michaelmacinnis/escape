@@ -28,7 +28,7 @@ import (
 
 // flags
 var (
-	algoFlag = flag.String("algo", "rta",
+	algoFlag = flag.String("algo", "pta",
 		`Call graph construction algorithm (static, cha, rta, pta)`)
 
 	testFlag = flag.Bool("test", false,
@@ -39,11 +39,11 @@ func init() {
 	flag.Var((*buildutil.TagsFlag)(&build.Default.BuildTags), "tags", buildutil.TagsFlagDoc)
 }
 
-const Usage = `callgraph: display the call graph of a Go program.
+const Usage = `check: report invalid uses of escape().
 
 Usage:
 
-  callgraph [-algo=static|cha|rta|pta] [-test] [-format=...] package...
+  check [-algo=static|cha|rta|pta] [-test] package...
 
 Flags:
 
@@ -58,6 +58,9 @@ Flags:
            treatment of dynamic calls (and thus also computational cost).
            RTA and PTA require a whole program (main or test), and
            include only functions reachable from main.
+
+           Note: Only pta (the default algorithm) produces correct results.
+                 The others are selectable to allow experimentation.
 
 -test      Include the package's tests in the analysis.
 `
