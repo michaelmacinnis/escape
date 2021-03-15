@@ -87,11 +87,8 @@ func find(d *decorator.Decorator, fset *token.FileSet, info *types.Info, e *dst.
 	}
 
 	ident, ok := call.Fun.(*dst.Ident)
-	if !ok {
-		return
-	}
 
-	if ident.Name != "escape" {
+	if !ok || ident.Name != "escape" {
 		for i := range call.Args {
 			label, param, src, typ = find(d, fset, info, &call.Args[i])
 			if label != "" {
@@ -196,23 +193,25 @@ func translate(name string) error {
 		return err //nolint:wrapcheck
 	}
 
-	conf := types.Config{Importer: importer.ForCompiler(fset, "gc", nil)}
-	conf.Error = func(e error) {
-		te, ok := e.(types.Error)
-		if !ok || te.Msg != "undeclared name: escape" {
-			err = e
-		}
+	conf := types.Config{
+		Error: func(e error) {
+			te, ok := e.(types.Error)
+			if !ok || te.Msg != "undeclared name: escape" {
+				err = e
+			}
+		},
+		Importer: importer.ForCompiler(fset, "source", nil),
 	}
 
-	info := &types.Info{Types: make(map[ast.Expr]types.TypeAndValue)}
+	info := &types.Info{
+		Types: make(map[ast.Expr]types.TypeAndValue),
+	}
 
 	conf.Check(name, fset, []*ast.File{f}, info)
 
 	if err != nil {
 		return err //nolint:wrapcheck
 	}
-
-	_ = info
 
 	dst.Inspect(file, func(n dst.Node) bool {
 		b, ok := n.(*dst.BlockStmt)
