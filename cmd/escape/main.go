@@ -196,7 +196,7 @@ func translate(name string) error {
 		return err //nolint:wrapcheck
 	}
 
-	conf := types.Config{Importer: importer.Default()}
+	conf := types.Config{Importer: importer.ForCompiler(fset, "gc", nil)}
 	conf.Error = func(e error) {
 		te, ok := e.(types.Error)
 		if !ok || te.Msg != "undeclared name: escape" {

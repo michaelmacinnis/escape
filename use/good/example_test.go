@@ -1,8 +1,9 @@
 package main
 
 import (
-	"errors"
 	"fmt"
+
+	"github.com/michaelmacinnis/escape/use/errors"
 )
 
 func ExampleCopyFile_close_dst_err() {
@@ -62,22 +63,6 @@ func ExampleCopyFile_no_src() {
 	// Output:
 	// open(src)
 	// copy(src, dst): src not found
-}
-
-// errors.Check
-func errorsCheck(f func(err error)) func(err error) {
-	return func(err error) {
-		if err != nil {
-			f(err)
-		}
-	}
-}
-
-// errors.Handle
-func errorsHandle(err *error, f func()) {
-	if *err != nil {
-		f()
-	}
 }
 
 func mock(data map[string]error, name string) error {
@@ -141,9 +126,9 @@ func mockcopy(data map[string]error) (err error) {
 			}
 		}()
 	}
-	check := errorsCheck(escape_hatch_1)
+	check := errors.Check(escape_hatch_1)
 
-	defer errorsHandle(&err, func() {
+	defer errors.Handle(&err, func() {
 		err = fmt.Errorf("copy(src, dst): %w", err)
 	})
 
@@ -155,7 +140,7 @@ func mockcopy(data map[string]error) (err error) {
 	err = mock(data, "open(dst)")
 	check(err)
 
-	defer errorsHandle(&err, func() {
+	defer errors.Handle(&err, func() {
 		mock(data, "close(dst)")
 		mock(data, "remove(dst)")
 	})

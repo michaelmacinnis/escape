@@ -1,12 +1,13 @@
 package main
 
 import (
-	"errors"
 	"fmt"
+
+	"github.com/michaelmacinnis/escape/use/errors"
 )
 
 func ExampleCopyFile_close_dst_err() {
-	wrapmockcopy(map[string]error{
+	wrapMockCopyFile(map[string]error{
 		"close(dst)": errors.New("problem closing dst"),
 	})
 	// Output:
@@ -21,7 +22,7 @@ func ExampleCopyFile_close_dst_err() {
 }
 
 func ExampleCopyFile_copy_err() {
-	wrapmockcopy(map[string]error{
+	wrapMockCopyFile(map[string]error{
 		"copy(dst, src)": errors.New("problem copying"),
 	})
 	// Output:
@@ -35,7 +36,7 @@ func ExampleCopyFile_copy_err() {
 }
 
 func ExampleCopyFile_no_dst() {
-	wrapmockcopy(map[string]error{
+	wrapMockCopyFile(map[string]error{
 		"open(dst)": errors.New("dst not found"),
 	})
 	// Output:
@@ -46,7 +47,7 @@ func ExampleCopyFile_no_dst() {
 }
 
 func ExampleCopyFile_no_error() {
-	wrapmockcopy(map[string]error{})
+	wrapMockCopyFile(map[string]error{})
 	// Output:
 	// open(src)
 	// open(dst)
@@ -56,28 +57,12 @@ func ExampleCopyFile_no_error() {
 }
 
 func ExampleCopyFile_no_src() {
-	wrapmockcopy(map[string]error{
+	wrapMockCopyFile(map[string]error{
 		"open(src)": errors.New("src not found"),
 	})
 	// Output:
 	// open(src)
 	// copy(src, dst): src not found
-}
-
-// errors.Check
-func errorsCheck(f func(err error)) func(err error) {
-	return func(err error) {
-		if err != nil {
-			f(err)
-		}
-	}
-}
-
-// errors.Handle
-func errorsHandle(err *error, f func()) {
-	if *err != nil {
-		f()
-	}
 }
 
 func mock(data map[string]error, name string) error {
@@ -109,10 +94,10 @@ https://go.googlesource.com/proposal/+/master/design/go2draft-error-handling-ove
 		return nil
 	}
 */
-func mockcopy(data map[string]error) (err error) {
-	check := errorsCheck(escape(&err))
+func mockCopyFile(data map[string]error) (err error) {
+	check := errors.Check(escape(&err))
 
-	defer errorsHandle(&err, func() {
+	defer errors.Handle(&err, func() {
 		err = fmt.Errorf("copy(src, dst): %w", err)
 	})
 
@@ -124,9 +109,9 @@ func mockcopy(data map[string]error) (err error) {
 	err = mock(data, "open(dst)")
 	check(err)
 
-	defer errorsHandle(&err, func() {
-			mock(data, "close(dst)")
-			mock(data, "remove(dst)")
+	defer errors.Handle(&err, func() {
+		mock(data, "close(dst)")
+		mock(data, "remove(dst)")
 	})
 
 	err = mock(data, "copy(dst, src)")
@@ -135,8 +120,8 @@ func mockcopy(data map[string]error) (err error) {
 	return mock(data, "close(dst)")
 }
 
-func wrapmockcopy(data map[string]error) {
-	err := mockcopy(data)
+func wrapMockCopyFile(data map[string]error) {
+	err := mockCopyFile(data)
 	if err != nil {
 		fmt.Printf("%s\n", err.Error())
 	}
