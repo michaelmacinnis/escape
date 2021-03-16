@@ -1,0 +1,31 @@
+package main
+
+import (
+	"errors"
+	"fmt"
+	"testing"
+)
+
+func annotate(abort func(error)) func(error, string, ...interface{}) {
+    return func(err error, format string, args ...interface{}) {
+        if err != nil {
+            abort(fmt.Errorf(format+": %w", append(args, err)...))
+        }
+    }
+}
+
+func additionalContext() (err error) {
+	check := annotate(escape(&err))
+
+	check(errors.New("reason"), "call failed")
+
+	return
+}
+
+func TestAdditionalErrors(t *testing.T) {
+	err := additionalContext()
+
+	if err == nil || err.Error() != "call failed: reason" {
+		t.Errorf("no wrapped error")
+	}
+}

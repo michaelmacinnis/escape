@@ -10,8 +10,8 @@ var errFailure = errors.New("failure")
 
 func cannotPassToParent() (err error) {
     check := func() func(error) {
-        f := errors.Check(escape(&err))
-		return f
+		f := errors.Check(escape(&err))
+        return f
     }()
 
     check(failure())

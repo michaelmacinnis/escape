@@ -1,0 +1,27 @@
+package main
+
+import (
+	"testing"
+)
+
+func furtherComplicatedChain(found func(string)) {
+    found("needle")
+}
+
+func someComplicatedChain(found func(string)) {
+    furtherComplicatedChain(found)
+}
+
+func notJustForErrors() (response string) {
+    found := escape(&response)
+
+    someComplicatedChain(found)
+
+    return "not found"
+}
+
+func TestChain(t *testing.T) {
+	if notJustForErrors() != "needle" {
+		t.Errorf("didn't find needle")
+	}
+}
