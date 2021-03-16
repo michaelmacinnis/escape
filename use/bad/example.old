@@ -1,33 +1,8 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 )
-
-var errFailure = errors.New("failure")
-
-func failure() error {
-	return errFailure
-}
-
-func success() error {
-	return nil
-}
-
-func emptyFailure() (string, error) {
-	return "", errFailure
-}
-
-func stringSuccess() (string, error) {
-	return "hello", nil
-}
-
-func childCallsCheck(check func(error)) {
-	check(success())
-
-	check(failure())
-}
 
 func furtherComplicatedChain(found func(string)) {
 	found("response")
@@ -65,37 +40,6 @@ func passToChild() (err error) {
 	check := escape(&err)
 
 	childCallsCheck(check)
-
-	return
-}
-
-func cannotPassToParent() (err error) {
-	check := func() func(error) {
-		childCheck := escape(&err)
-
-		return childCheck
-	}()
-
-	check(success())
-
-	return
-}
-
-func cannotPassToParent2() (err error) {
-	check := func() func(error) {
-		check := escape(&err)
-		return check
-	}()
-
-	check(success())
-
-	return
-}
-
-func cannotGiveCheckToAnotherGoroutine() (err error) {
-	check := escape(&err)
-
-	go childCallsCheck(check)
 
 	return
 }
@@ -141,8 +85,6 @@ func additionalContext2() (err error) {
 
 // Some comments that should stay put.
 func main() {
-	cannotGiveCheckToAnotherGoroutine()
 	passToChild()
-	cannotPassToParent2()
 	notJustForErrors()
 }

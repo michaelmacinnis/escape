@@ -1,0 +1,92 @@
+package main
+
+import (
+	"testing"
+
+    "github.com/michaelmacinnis/escape/use/errors"
+)
+
+var errFailure = errors.New("failure")
+
+func cannotPassToParent() (err error) {
+    check := func() func(error) {
+        f := errors.Check(escape(&err))
+		return f
+    }()
+
+    check(failure())
+
+    return
+}
+
+func cannotPassToParent2() (err error) {
+	var check func(error)
+
+	func() {
+		check = errors.Check(escape(&err))
+	}()
+
+	check(failure())
+
+	return
+}
+
+func cannotPassToAnotherGoroutine() (err error) {
+	var check func(error)
+
+	c := make(chan struct{})
+
+	go func() {
+		check = errors.Check(escape(&err))
+
+		close(c)
+	}()
+
+	<-c
+
+	childCallsCheck(check)
+
+	return
+}
+
+func childCallsCheck(check func(error)) {
+    check(success())
+    check(failure())
+}
+
+func failure() error {
+    return errFailure
+}
+
+func panics(t *testing.T, f func()) {
+    defer func() {
+        r := recover()
+		if r == nil {
+            t.Errorf("The code did not panic")
+        }
+    }()
+
+	f()
+}
+
+func success() error {
+    return nil
+}
+
+func TestCannotPassToParent(t *testing.T) {
+	panics(t, func() {
+		cannotPassToParent()
+	})
+}
+
+func TestCannotPassToParent2(t *testing.T) {
+	panics(t, func() {
+		cannotPassToParent2()
+	})
+}
+
+func TestCannotPassToAnotherGoroutine(t *testing.T) {
+	panics(t, func() {
+		cannotPassToAnotherGoroutine()
+	})
+}
